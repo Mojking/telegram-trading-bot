@@ -1,0 +1,55 @@
+name: FVG Bot
+
+on:
+  schedule:
+    - cron: "7 * * * *"     # hourly watchdog: queues the next run so there's always one waiting
+  workflow_dispatch:         # start it manually from the Actions tab
+
+concurrency:
+  group: fvg-bot
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: fvg-state-${{ github.run_id }}
+          restore-keys: fvg-state-
+
+      - name: Run bot (about 5h40m, then hands over)
+        run: python bot.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OANDA_TOKEN: ${{ secrets.OANDA_TOKEN }}
+          # ---- edit these ----
+          SOURCE: oanda               # free real-time NAS100 via OANDA demo account
+          SYMBOLS: "NAS100_USD"       # OANDA's NAS100 CFD
+          POLL_SEC: "60"              # check every minute
+          CONFIRM_ALERT: "0"          # 1 = also alert when FVG is respected
+          INTERNAL_LEN: "3"
+          SWING_LEN: "10"
+          MIN_FVG_ATR: "0.10"         # ignore gaps smaller than 10% of average candle range
+          MAX_AGE_BARS: "48"
+          TZ_OFFSET_HOURS: "8"
+          # ---- leave these ----
+          RUN_MINUTES: "340"
+          STARTUP_MSG: "0"
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: state.json
+          key: fvg-state-${{ github.run_id }}-${{ github.run_attempt }}
